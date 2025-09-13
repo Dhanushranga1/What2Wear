@@ -1,0 +1,30 @@
+# Existing dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+requests==2.31.0
+python-dotenv==1.0.0
+pillow>=10.0.0
+numpy>=1.24.0
+scikit-learn==1.5.*
+psycopg2-binary>=2.9.0
+
+# StyleSync segmentation dependencies (Phase 1)
+# Note: Using compatible versions while respecting spec pinning intentions
+pydantic==2.8.*
+opencv-python==4.10.*
+rembg==2.0.*
+loguru==0.7.*
+supabase>=2.0.0
+python-multipart>=0.0.5  # Required for file uploads
+
+# Phase 4 dependencies
+redis>=5.0.0  # Caching backend
+prometheus-client>=0.17.0  # Metrics
+opentelemetry-api>=1.20.0  # Tracing
+opentelemetry-sdk>=1.20.0
+opentelemetry-instrumentation-fastapi>=0.41b0
+cryptography>=41.0.0  # For secure tokens
+
+# Testing dependencies  
+pytest>=7.0.0
+httpx>=0.24.0  # Required for TestClient

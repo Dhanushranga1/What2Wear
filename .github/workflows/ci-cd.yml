@@ -1,0 +1,237 @@
+# StyleSync CI/CD Pipeline
+# Multi-stage pipeline: lint → test → build → scan → stage → promote
+
+name: StyleSync CI/CD
+
+on:
+  push:
+    branches: [main, develop, "feature/*"]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: stylesync/backend
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt
+        pip install black ruff mypy
+    
+    - name: Format check with Black
+      run: |
+        cd backend
+        black --check --diff .
+    
+    - name: Lint with Ruff
+      run: |
+        cd backend
+        ruff check .
+    
+    - name: Type check with mypy
+      run: |
+        cd backend
+        mypy --ignore-missing-imports .
+
+  test:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgl1-mesa-glx libglib2.0-0
+    
+    - name: Install Python dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio pytest-cov
+    
+    - name: Run unit tests
+      env:
+        STYLESYNC_REDIS_URL: redis://localhost:6379
+        STYLESYNC_ENABLE_AUTH: "0"
+      run: |
+        cd backend
+        pytest tests/ -v --cov=app --cov-report=xml
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./backend/coverage.xml
+        flags: backend
+        name: backend-coverage
+
+  build:
+    name: Build & Scan Container
+    runs-on: ubuntu-latest
+    needs: test
+    
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-tag: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  stage-deploy:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    
+    environment:
+      name: staging
+      url: https://api-staging.stylesync.example.com
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to staging
+      run: |
+        echo "Deploying ${{ needs.build.outputs.image-tag }} to staging"
+        # In real implementation, this would:
+        # 1. Update Kubernetes/Docker Compose config
+        # 2. Apply new image tag
+        # 3. Wait for rollout completion
+        # 4. Run smoke tests
+    
+    - name: Run smoke tests
+      run: |
+        cd backend
+        python -m pytest tests/smoke/ -v
+      env:
+        SMOKE_TEST_URL: https://api-staging.stylesync.example.com
+        SMOKE_TEST_API_KEY: ${{ secrets.STAGING_API_KEY }}
+
+  prod-deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, stage-deploy]
+    if: github.ref == 'refs/heads/main'
+    
+    environment:
+      name: production
+      url: https://api.stylesync.example.com
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to production (canary)
+      run: |
+        echo "Starting canary deployment of ${{ needs.build.outputs.image-tag }}"
+        # Canary deployment: 10% traffic to new version
+        
+    - name: Monitor canary metrics
+      run: |
+        echo "Monitoring canary deployment for 10 minutes"
+        # Monitor error rates, latency, success rates
+        # If metrics are good, continue to full deployment
+        
+    - name: Promote to full deployment
+      run: |
+        echo "Promoting canary to 100% traffic"
+        # Switch all traffic to new version
+        
+    - name: Verify production deployment
+      run: |
+        cd backend  
+        python -m pytest tests/smoke/ -v
+      env:
+        SMOKE_TEST_URL: https://api.stylesync.example.com
+        SMOKE_TEST_API_KEY: ${{ secrets.PROD_API_KEY }}
+
+  rollback:
+    name: Rollback Production
+    runs-on: ubuntu-latest
+    if: failure() && github.ref == 'refs/heads/main'
+    needs: prod-deploy
+    
+    steps:
+    - name: Rollback production deployment
+      run: |
+        echo "Rolling back production deployment"
+        # Rollback to previous stable version
+        # Update monitoring dashboards
+        # Send alerts to team

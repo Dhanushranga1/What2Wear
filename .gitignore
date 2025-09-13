@@ -1,0 +1,83 @@
+# Node.js
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+frontend/.env
+frontend/dist/
+frontend/build/
+frontend/.nuxt/
+frontend/.output/
+frontend/.vercel/
+
+# Python
+backend/venv/
+backend/.venv/
+backend/__pycache__/
+backend/.env
+backend/.pytest_cache/
+backend/*.pyc
+backend/**/*.pyc
+backend/instance/
+backend/.coverage
+backend/htmlcov/
+backend/.tox/
+backend/.cache/
+backend/nosetests.xml
+backend/coverage.xml
+backend/*.cover
+backend/.hypothesis/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+.tmp/
+
+# Build artifacts
+build/
+dist/
+*.tgz
+*.tar.gz
